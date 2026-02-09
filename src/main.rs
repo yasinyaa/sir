@@ -1,28 +1,29 @@
-mod channel;
-use actix_web::{App, HttpResponse, HttpServer, Responder, get, post, web};
+mod actors;
 
-#[get("/")]
-async fn hello() -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
-}
+use actix::prelude::*;
+use actix_web::{App, Error, HttpRequest, HttpResponse, HttpServer, web};
+use actix_web_actors::ws;
 
-#[post("/echo")]
-async fn echo(req_body: String) -> impl Responder {
-    HttpResponse::Ok().body(req_body)
-}
+use crate::actors::chat::ChatServer;
+use crate::actors::session::Session;
 
-async fn manual_hello() -> impl Responder {
-    HttpResponse::Ok().body("Hey there!")
+async fn ws_handler(
+    req: HttpRequest,
+    stream: web::Payload,
+    server: web::Data<Addr<ChatServer>>,
+) -> Result<HttpResponse, Error> {
+    let session = Session::new(server.get_ref().clone());
+    ws::start(session, &req, stream)
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| {
+    let chat_server = ChatServer::new().start();
+
+    HttpServer::new(move || {
         App::new()
-            .service(hello)
-            .service(echo)
-            .route("/ws", web::get().to(ws))
-            .route("/hey", web::get().to(manual_hello))
+            .app_data(web::Data::new(chat_server.clone()))
+            .route("/ws", web::get().to(ws_handler))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
