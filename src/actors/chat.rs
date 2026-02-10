@@ -36,8 +36,8 @@ impl ChatServer {
     }
 
     fn broadcast(&self, msg: ChatMessage) {
-        for member_id in &self.members {
-            if let Some(addr) = self.sessions.get(member_id) {
+        for (id, addr) in &self.sessions {
+            if *id != msg.from {
                 let _ = addr.do_send(msg.clone());
             }
         }
