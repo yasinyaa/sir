@@ -37,16 +37,48 @@ impl Actor for Session {
     }
 }
 
+// impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
+//     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+//         match msg {
+//             Ok(ws::Message::Binary(cipher)) => {
+//                 log::info!(
+//                     "Session {} received binary frame len={}",
+//                     self.id,
+//                     cipher.len()
+//                 );
+//                 self.server.do_send(ChatMessage {
+//                     payload: cipher.to_vec(),
+//                 });
+//             }
+
+//             Ok(ws::Message::Ping(p)) => ctx.pong(&p),
+
+//             Ok(ws::Message::Close(_)) => ctx.stop(),
+
+//             _ => {}
+//         }
+//     }
+// }
+
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
-            Ok(ws::Message::Text(text)) => {
-                // encrypted payload from client
+            Ok(ws::Message::Binary(cipher)) => {
+                log::info!(
+                    "Session {} received binary frame len={}",
+                    self.id,
+                    cipher.len()
+                );
+
                 self.server.do_send(ChatMessage {
-                    from: self.id,
-                    payload: text.to_string(),
+                    payload: cipher.to_vec(),
                 });
             }
+
+            Ok(ws::Message::Text(text)) => {
+                log::warn!("Session {} received TEXT frame len={}", self.id, text.len());
+            }
+
             Ok(ws::Message::Ping(p)) => ctx.pong(&p),
             Ok(ws::Message::Close(_)) => ctx.stop(),
             _ => {}
@@ -59,6 +91,6 @@ impl Handler<ChatMessage> for Session {
 
     fn handle(&mut self, msg: ChatMessage, ctx: &mut Self::Context) {
         // encrypted payload back to client
-        ctx.text(msg.payload);
+        ctx.binary(msg.payload);
     }
 }
