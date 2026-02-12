@@ -21,6 +21,7 @@ pub struct Mixer {
     p: f64,
     epoch: Duration,
     chat: Addr<crate::actors::chat::ChatServer>,
+    tick: u64,
 }
 
 impl Mixer {
@@ -30,6 +31,7 @@ impl Mixer {
             p,
             epoch,
             chat,
+            tick: 0,
         }
     }
 
@@ -60,6 +62,8 @@ impl Actor for Mixer {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        log::info!("Mixer started: epoch={:?}, p={}", self.epoch, self.p);
+
         ctx.run_interval(self.epoch, |_, ctx| {
             ctx.address().do_send(Flush);
         });
@@ -68,40 +72,30 @@ impl Actor for Mixer {
 
 /* -------- Handlers -------- */
 
-// impl Handler<Enqueue> for Mixer {
-//     type Result = ();
-
-//     fn handle(&mut self, msg: Enqueue, _: &mut Context<Self>) {
-//         if msg.cipher_text.len() != MSG_SIZE {
-//             log::warn!(
-//                 "Dropped msg: expected {} bytes, got {}",
-//                 MSG_SIZE,
-//                 msg.cipher_text.len()
-//             );
-//             return;
-//         }
-
-//         self.queue.push(MixItem {
-//             cipher_text: msg.cipher_text,
-//             epochs_left: self.sample_epoch(),
-//         });
-//     }
-// }
-//
 impl Handler<Enqueue> for Mixer {
     type Result = ();
 
     fn handle(&mut self, msg: Enqueue, _: &mut Context<Self>) {
-        log::info!("Mixer enqueue len={}", msg.cipher_text.len());
-
         if msg.cipher_text.len() != MSG_SIZE {
-            log::warn!("Dropped message: wrong size");
+            log::warn!(
+                "Mixer dropped msg: expected {} bytes, got {}",
+                MSG_SIZE,
+                msg.cipher_text.len()
+            );
             return;
         }
 
+        let epochs = self.sample_epoch();
+
+        log::info!(
+            "Mixer enqueue: size={}, epochs_left={}",
+            msg.cipher_text.len(),
+            epochs
+        );
+
         self.queue.push(MixItem {
             cipher_text: msg.cipher_text,
-            epochs_left: self.sample_epoch(),
+            epochs_left: epochs,
         });
     }
 }
@@ -110,16 +104,21 @@ impl Handler<Flush> for Mixer {
     type Result = ();
 
     fn handle(&mut self, _: Flush, _: &mut Context<Self>) {
+        self.tick += 1;
+
         let mut ready = Vec::new();
 
-        for item in &mut self.queue {
+        for (_idx, item) in self.queue.iter_mut().enumerate() {
+            if item.epochs_left > 0 {
+                item.epochs_left -= 1;
+            }
+
             if item.epochs_left == 0 {
                 ready.push(item.cipher_text.clone());
-            } else {
-                item.epochs_left -= 1;
             }
         }
 
+        // Keep only messages still waiting
         self.queue.retain(|item| item.epochs_left > 0);
 
         if ready.is_empty() {
@@ -127,6 +126,8 @@ impl Handler<Flush> for Mixer {
         }
 
         randomize_msgs_order(&mut ready);
+
+        log::info!("Mixer FLUSH → sending batch size={}", ready.len());
 
         self.chat.do_send(MixedBatch { messages: ready });
     }

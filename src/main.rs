@@ -1,4 +1,5 @@
 mod actors;
+mod routes;
 mod utils;
 
 use std::time::Duration;
@@ -33,7 +34,7 @@ async fn main() -> std::io::Result<()> {
 
     let chat_server = ChatServer::new(None).start();
 
-    let mixer = Mixer::new(1.0, Duration::from_secs(1), chat_server.clone()).start();
+    let mixer = Mixer::new(0.2, Duration::from_secs(3), chat_server.clone()).start();
 
     chat_server.do_send(crate::actors::chat::SetMixer {
         mixer: Some(mixer.clone()),
