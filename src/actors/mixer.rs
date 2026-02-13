@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use crate::actors::chat::MixedBatch;
 use crate::utils::randomize::randomize_msgs_order;
+use crate::utils::redis::RedisService;
 
 const MSG_SIZE: usize = 1024;
 
@@ -21,16 +22,23 @@ pub struct Mixer {
     p: f64,
     epoch: Duration,
     chat: Addr<crate::actors::chat::ChatServer>,
+    redis: RedisService,
     tick: u64,
 }
 
 impl Mixer {
-    pub fn new(p: f64, epoch: Duration, chat: Addr<crate::actors::chat::ChatServer>) -> Self {
+    pub fn new(
+        p: f64,
+        epoch: Duration,
+        chat: Addr<crate::actors::chat::ChatServer>,
+        redis: RedisService,
+    ) -> Self {
         Self {
             queue: Vec::new(),
             p,
             epoch,
             chat,
+            redis,
             tick: 0,
         }
     }
@@ -86,6 +94,10 @@ impl Handler<Enqueue> for Mixer {
         }
 
         let epochs = self.sample_epoch();
+        if let Err(err) = self.redis.save_message(&msg.cipher_text) {
+            log::error!("Mixer failed to save message to redis: {err}");
+            return;
+        }
 
         log::info!(
             "Mixer enqueue: size={}, epochs_left={}",

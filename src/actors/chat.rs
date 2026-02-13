@@ -98,21 +98,6 @@ impl Handler<Disconnect> for ChatServer {
     }
 }
 
-/// Incoming ciphertext → mixer
-// impl Handler<ChatMessage> for ChatServer {
-//     type Result = ();
-
-//     fn handle(&mut self, msg: ChatMessage, _: &mut Context<Self>) {
-//         if let Some(mixer) = &self.mixer {
-//             mixer.do_send(Enqueue {
-//                 cipher_text: msg.payload,
-//             });
-//         } else {
-//             log::warn!("Received message before mixer attached");
-//         }
-//     }
-// }
-//
 impl Handler<ChatMessage> for ChatServer {
     type Result = ();
 

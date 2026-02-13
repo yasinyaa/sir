@@ -1,18 +1,23 @@
 mod actors;
-mod routes;
 mod utils;
 
 use std::time::Duration;
 
 use actix::prelude::*;
+use actix_web::error::ErrorInternalServerError;
 use actix_web::{App, Error, HttpRequest, HttpResponse, HttpServer, web};
 use actix_web_actors::ws;
-use dotenv;
-use env_logger;
 
 use crate::actors::chat::ChatServer;
 use crate::actors::mixer::Mixer;
 use crate::actors::session::Session;
+use crate::utils::redis::RedisService;
+
+async fn get_all_messages(redis: web::Data<RedisService>) -> Result<HttpResponse, Error> {
+    let messages = redis.get_all_messages().map_err(ErrorInternalServerError)?;
+
+    Ok(HttpResponse::Ok().json(messages))
+}
 
 /* ---------------- WebSocket handler ---------------- */
 
@@ -32,9 +37,17 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().expect("failed to find .env file");
     env_logger::init();
 
+    let redis = RedisService::from_env().expect("failed to initialize redis service from .env");
+
     let chat_server = ChatServer::new(None).start();
 
-    let mixer = Mixer::new(0.2, Duration::from_secs(3), chat_server.clone()).start();
+    let mixer = Mixer::new(
+        0.2,
+        Duration::from_secs(3),
+        chat_server.clone(),
+        redis.clone(),
+    )
+    .start();
 
     chat_server.do_send(crate::actors::chat::SetMixer {
         mixer: Some(mixer.clone()),
@@ -43,6 +56,8 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(chat_server.clone()))
+            .app_data(web::Data::new(redis.clone()))
+            .route("/messages", web::get().to(get_all_messages))
             .route("/ws", web::get().to(ws_handler))
     })
     .bind(("127.0.0.1", 8080))?
