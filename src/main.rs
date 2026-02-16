@@ -1,4 +1,5 @@
 mod actors;
+mod routes;
 mod utils;
 
 use std::time::Duration;
