@@ -1,7 +1,7 @@
-use rand::rng;
 use rand::seq::SliceRandom;
+use rand::thread_rng;
 
 pub fn randomize_msgs_order<T>(msgs: &mut [T]) {
-    let mut rng = rng();
+    let mut rng = thread_rng();
     msgs.shuffle(&mut rng);
 }

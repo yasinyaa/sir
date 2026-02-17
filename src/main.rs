@@ -12,6 +12,7 @@ use actix_web_actors::ws;
 use crate::actors::chat::ChatServer;
 use crate::actors::mixer::Mixer;
 use crate::actors::session::Session;
+use crate::routes::auth;
 use crate::utils::redis::RedisService;
 
 async fn get_all_messages(redis: web::Data<RedisService>) -> Result<HttpResponse, Error> {
@@ -60,6 +61,8 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(redis.clone()))
             .route("/messages", web::get().to(get_all_messages))
             .route("/ws", web::get().to(ws_handler))
+            .route("/auth/challenge", web::post().to(auth::sign_in))
+            .route("/auth/verify", web::post().to(auth::verify))
     })
     .bind(("127.0.0.1", 8080))?
     .run()

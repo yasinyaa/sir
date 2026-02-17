@@ -26,6 +26,22 @@ impl RedisService {
         Ok(Self { client })
     }
 
+    pub fn save_challenge(&self, challenge: &str, key: &str, ttl_secs: u64) -> RedisResult<usize> {
+        let mut conn = self.client.get_connection()?;
+        conn.set_ex(key, challenge, ttl_secs)?
+    }
+
+    pub fn get_challenge(&self, key: &str) -> RedisResult<Option<String>> {
+        let mut conn = self.client.get_connection()?;
+        conn.get(key)
+    }
+
+    pub fn delete_challenge(&self, key: &str) -> RedisResult<()> {
+        let mut conn = self.client.get_connection()?;
+        let _: usize = conn.del(key)?;
+        Ok(())
+    }
+
     pub fn save_message(&self, message: &[u8]) -> RedisResult<usize> {
         let mut conn = self.client.get_connection()?;
         let encoded = encode_hex(message);
