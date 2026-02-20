@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use actix::prelude::*;
 use actix_web::error::ErrorInternalServerError;
-use actix_web::{App, Error, HttpRequest, HttpResponse, HttpServer, web};
+use actix_web::{App, Error, HttpRequest, HttpResponse, HttpServer, middleware::Logger, web};
 use actix_web_actors::ws;
 
 use crate::actors::chat::ChatServer;
@@ -59,6 +59,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(chat_server.clone()))
             .app_data(web::Data::new(redis.clone()))
+            .wrap(Logger::default())
             .route("/messages", web::get().to(get_all_messages))
             .route("/ws", web::get().to(ws_handler))
             .route("/auth/challenge", web::post().to(auth::sign_in))

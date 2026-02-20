@@ -1,7 +1,9 @@
 import asyncio
+import base64
 import os
 from pathlib import Path
 
+import requests
 import websockets
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
@@ -10,6 +12,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 # ---------------- Configuration ----------------
 
 WS_URL = "ws://127.0.0.1:8080/ws"
+BASE_URL = "http://localhost:8080"
 
 RSA_KEY_SIZE = 2048
 RSA_CIPHERTEXT_SIZE = 256
@@ -167,6 +170,60 @@ async def sender(ws, public_key):
         print(f"✔ Sent {len(encrypted)} bytes")
 
 
+# ---------------- Auth ----------------
+async def sign_in():
+    print("Logging in....")
+    _, public_key = load_rsa_keypair()
+    public_der = public_key.public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    public_b64 = base64.b64encode(public_der).decode("ascii")
+    headers = {"Content-Type": "application/json"}
+
+    response = requests.post(
+        f"{BASE_URL}/auth/challenge",
+        headers=headers,
+        json={"public_key": public_b64},
+    )
+    return response
+
+
+async def verify(challenge):
+    print("Verifying.....")
+    private_key, public_key = load_rsa_keypair()
+    challenge_bytes = (
+        challenge if isinstance(challenge, bytes) else challenge.encode("utf-8")
+    )
+    signature = private_key.sign(
+        challenge_bytes,
+        padding.PKCS1v15(),
+        hashes.SHA256(),
+    )
+    public_der = public_key.public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    public_b64 = base64.b64encode(public_der).decode("ascii")
+    signature_b64 = base64.b64encode(signature).decode("ascii")
+    challenge_str = (
+        challenge.decode("utf-8") if isinstance(challenge, bytes) else challenge
+    )
+
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(
+        f"{BASE_URL}/auth/verify",
+        headers=headers,
+        json={
+            "public_key": public_b64,
+            "signature": signature_b64,
+            "challenge": challenge_str,
+        },
+    )
+
+    return response
+
+
 # ---------------- Main ----------------
 
 
@@ -176,13 +233,24 @@ async def ws_client():
 
     private_key, public_key = load_rsa_keypair()
 
-    async with websockets.connect(WS_URL, max_size=None) as ws:
-        print("🔐 Connected to encrypted WebSocket")
+    result = await sign_in()
+    if result.ok:
+        print("Challenge recieved")
+        data = result.json()
+        verification = await verify(data["challenge"])
+        if verification.ok:
+            print("Challenge Verifed")
+            async with websockets.connect(WS_URL, max_size=None) as ws:
+                print("🔐 Connected to encrypted WebSocket")
 
-        await asyncio.gather(
-            receiver(ws, private_key),
-            sender(ws, public_key),
-        )
+                await asyncio.gather(
+                    receiver(ws, private_key),
+                    sender(ws, public_key),
+                )
+        else:
+            print(f"Request failed: {verification.status_code} -> {verification.text}")
+    else:
+        print(f"Request failed: {result.status_code} -> {result.text}")
 
 
 if __name__ == "__main__":

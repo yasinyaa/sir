@@ -26,9 +26,10 @@ impl RedisService {
         Ok(Self { client })
     }
 
-    pub fn save_challenge(&self, challenge: &str, key: &str, ttl_secs: u64) -> RedisResult<usize> {
+    pub fn save_challenge(&self, challenge: &str, key: &str, ttl_secs: u64) -> RedisResult<()> {
         let mut conn = self.client.get_connection()?;
-        conn.set_ex(key, challenge, ttl_secs)?
+        let _: () = conn.set_ex(key, challenge, ttl_secs)?;
+        Ok(())
     }
 
     pub fn get_challenge(&self, key: &str) -> RedisResult<Option<String>> {
